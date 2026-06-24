@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,12 @@ export default function Transactions() {
   const [search, setSearch] = useState("");
   const fileRef = useRef();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await api.get("/transactions?limit=300");
     setTxns(data);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const onUpload = async (e) => {
     const file = e.target.files?.[0];

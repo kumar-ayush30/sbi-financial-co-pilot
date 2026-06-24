@@ -56,7 +56,7 @@ export default function Analytics() {
               <ResponsiveContainer>
                 <PieChart>
                   <Pie data={cats} dataKey="amount" nameKey="category" cx="50%" cy="50%" outerRadius={100} label={(d) => d.category}>
-                    {cats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
+                    {cats.map((c) => <Cell key={c.category} fill={COLORS[cats.indexOf(c) % COLORS.length]}/>)}
                   </Pie>
                   <Tooltip formatter={v => formatINR(v)}/>
                 </PieChart>

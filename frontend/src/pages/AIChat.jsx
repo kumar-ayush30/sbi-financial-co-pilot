@@ -13,7 +13,7 @@ const suggestions = [
 ];
 
 export default function AIChat() {
-  const [messages, setMessages] = useState([{ role: "assistant", text: "Hi! I'm your SBI Co-Pilot. Ask me anything about your finances — I have access to your transaction history and goals." }]);
+  const [messages, setMessages] = useState([{ id: "welcome", role: "assistant", text: "Hi! I'm your SBI Co-Pilot. Ask me anything about your finances — I have access to your transaction history and goals." }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const endRef = useRef();
@@ -25,13 +25,13 @@ export default function AIChat() {
       try {
         const { data } = await api.get("/ai/chat-history?limit=10");
         if (data.length) {
-          const history = data.reverse().flatMap(h => [
-            { role: "user", text: h.question },
-            { role: "assistant", text: h.answer },
+          const history = data.reverse().flatMap((h) => [
+            { id: `q-${h.id}`, role: "user", text: h.question },
+            { id: `a-${h.id}`, role: "assistant", text: h.answer },
           ]);
           setMessages(m => [m[0], ...history]);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { console.error("chat history load failed:", e); }
     })();
   }, []);
 
@@ -39,13 +39,14 @@ export default function AIChat() {
     const question = (q ?? input).trim();
     if (!question) return;
     setInput("");
-    setMessages(m => [...m, { role: "user", text: question }]);
+    const ts = Date.now();
+    setMessages(m => [...m, { id: `u-${ts}`, role: "user", text: question }]);
     setLoading(true);
     try {
       const { data } = await api.post("/ai/chat", { question });
-      setMessages(m => [...m, { role: "assistant", text: data.answer }]);
+      setMessages(m => [...m, { id: `a-${ts}`, role: "assistant", text: data.answer }]);
     } catch (e) {
-      setMessages(m => [...m, { role: "assistant", text: "Sorry, I hit a snag. Try again?" }]);
+      setMessages(m => [...m, { id: `e-${ts}`, role: "assistant", text: "Sorry, I hit a snag. Try again?" }]);
     }
     setLoading(false);
   };
@@ -62,7 +63,7 @@ export default function AIChat() {
         <CardContent className="p-0 flex-1 flex flex-col">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`} data-testid={`msg-${i}`}>
+              <div key={m.id} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`} data-testid={`msg-${i}`}>
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${m.role === "user" ? "bg-[#1C3F8E]" : "bg-gradient-to-br from-[#1C3F8E] to-[#7A2C8E]"} text-white`}>
                   {m.role === "user" ? <User size={16}/> : <Sparkles size={16}/>}
                 </div>

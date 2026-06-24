@@ -129,7 +129,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={cats} dataKey="amount" nameKey="category" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                    {cats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
+                    {cats.map((c) => <Cell key={c.category} fill={COLORS[cats.indexOf(c) % COLORS.length]}/>)}
                   </Pie>
                   <Tooltip formatter={(v) => formatINR(v)} contentStyle={{ background: "rgba(255,255,255,0.95)", border: "1px solid #E2E8F0", borderRadius: 8 }}/>
                 </PieChart>

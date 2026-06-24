@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,13 +9,13 @@ export default function Recommendations() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try { const { data } = await api.get("/recommendations"); setData(data); }
     finally { setLoading(false); }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   if (loading || !data) return <div className="text-slate-500 p-8 flex items-center gap-2"><Sparkles className="animate-pulse"/> AI agents are analyzing your data…</div>;
 
@@ -54,8 +54,8 @@ export default function Recommendations() {
             <div className="flex items-center gap-2 text-red-600 mb-1"><AlertTriangle size={16}/><div className="text-xs uppercase tracking-widest font-semibold">Overspending</div></div>
             <div className="font-heading text-xl font-semibold">Categories burning cash</div>
             <div className="mt-4 space-y-3">
-              {(insights.overspending_categories || []).map((o, i) => (
-                <div key={i} data-testid={`overspend-${i}`} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0">
+              {(insights.overspending_categories || []).map((o) => (
+                <div key={o.category || o.reason} data-testid={`overspend-${o.category}`} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0">
                   <div>
                     <div className="font-medium text-[#0A1128]">{o.category}</div>
                     <div className="text-xs text-slate-500 mt-0.5">{o.reason}</div>
@@ -74,8 +74,8 @@ export default function Recommendations() {
             <div className="flex items-center gap-2 text-amber-600 mb-1"><RefreshCw size={16}/><div className="text-xs uppercase tracking-widest font-semibold">Subscriptions</div></div>
             <div className="font-heading text-xl font-semibold">Recurring drains</div>
             <div className="mt-4 space-y-2">
-              {(insights.subscriptions || []).map((s, i) => (
-                <div key={i} data-testid={`sub-${i}`} className="flex items-center justify-between text-sm py-2 border-b border-slate-100 last:border-0">
+              {(insights.subscriptions || []).map((s) => (
+                <div key={s.service} data-testid={`sub-${s.service}`} className="flex items-center justify-between text-sm py-2 border-b border-slate-100 last:border-0">
                   <div className="font-medium text-[#0A1128]">{s.service}</div>
                   <div className="money text-slate-700">{formatINR(s.monthly_cost)}/mo</div>
                 </div>
@@ -92,8 +92,8 @@ export default function Recommendations() {
           <div className="flex items-center gap-2 text-emerald-600 mb-1"><Sparkles size={16}/><div className="text-xs uppercase tracking-widest font-semibold">Cost-Cutting Agent</div></div>
           <div className="font-heading text-xl font-semibold mb-4">Savings opportunities</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(data.savings_opportunities || []).map((s, i) => (
-              <div key={i} data-testid={`saving-${i}`} className="border border-slate-200 rounded-lg p-4 hover:border-[#1C3F8E] transition-colors">
+            {(data.savings_opportunities || []).map((s) => (
+              <div key={s.title} data-testid={`saving-${s.title}`} className="border border-slate-200 rounded-lg p-4 hover:border-[#1C3F8E] transition-colors">
                 <div className="flex items-start justify-between gap-3">
                   <div className="font-medium text-[#0A1128]">{s.title}</div>
                   <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 money">+{formatINR(s.potential_saving)}/mo</Badge>
@@ -111,8 +111,8 @@ export default function Recommendations() {
           <div className="flex items-center gap-2 text-[#7A2C8E] mb-1"><BadgeCheck size={16}/><div className="text-xs uppercase tracking-widest font-semibold">SBI Recommender</div></div>
           <div className="font-heading text-xl font-semibold mb-4">Recommended SBI Products</div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(data.sbi_products || []).map((p, i) => (
-              <div key={i} data-testid={`product-${i}`} className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50 hover:shadow-md transition-all">
+            {(data.sbi_products || []).map((p) => (
+              <div key={p.product_name} data-testid={`product-${p.product_name}`} className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50 hover:shadow-md transition-all">
                 <div className="flex items-center gap-2 mb-2">
                   <Badge variant="outline" className="border-[#1C3F8E] text-[#1C3F8E] text-[10px] uppercase tracking-wider">{p.product_type}</Badge>
                   <Badge variant="outline" className="text-[10px] uppercase">{p.risk_level} risk</Badge>
