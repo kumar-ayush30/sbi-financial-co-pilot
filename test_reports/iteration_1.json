@@ -1,0 +1,46 @@
+{
+  "summary": "Smoke-tested SBI Financial Co-Pilot backend + frontend. Login flow, dashboard, transactions, financial-health, recommendations, analytics, wealth-simulator, AI chat, OTP send/verify and chat-history all work via public REACT_APP_BACKEND_URL. One CRITICAL backend bug: POST /api/auth/register returns 500 (ObjectId serialization). Frontend register flow is therefore blocked. All other UI pages render correctly with seeded data (123 transactions, charts, sliders, health gauge).",
+  "tested_scope": ["frontend", "backend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login (priya.sharma@example.com / Test@1234) returns access+refresh tokens",
+    "POST /api/auth/refresh returns new access token",
+    "GET /api/auth/me returns user profile",
+    "POST /api/auth/otp/send returns demo_otp",
+    "POST /api/auth/otp/verify with 123456 fallback => verified:true",
+    "GET /api/dashboard/summary returns balance/income/expenses/health_score",
+    "GET /api/transactions returns 122 seeded transactions",
+    "POST /api/transactions creates tx (requires transaction_type, transaction_date, merchant_name)",
+    "DELETE /api/transactions/{id} returns 200",
+    "POST /api/transactions/upload-csv imports rows ({imported:1})",
+    "GET /api/financial-health returns score+5-part breakdown",
+    "POST /api/wealth-simulator returns projected_value/yearly_breakdown/milestones (field: monthly_investment)",
+    "POST /api/ai/chat with {question} returns Gemini answer using user context",
+    "GET /api/ai/chat-history returns list",
+    "GET /api/recommendations returns expense_insights, savings_opportunities, sbi_products",
+    "GET /api/analytics/monthly-spending, category-breakdown, savings-trend all return data",
+    "Frontend: Landing page loads (title: SBI Financial Co-Pilot)",
+    "Frontend: Login flow -> redirects to /dashboard with 'Welcome back!' toast",
+    "Frontend: Dashboard renders Balance/Income/Expenses/Potential Savings cards, savings chart, health score gauge (21/100)",
+    "Frontend: Transactions page shows 123 rows with date/merchant/category/method/amount + Upload CSV button",
+    "Frontend: AI Co-Pilot Chat page renders, prior Gemini responses visible",
+    "Frontend: Wealth Simulator renders with 3 sliders (investment/duration/return) and Project button",
+    "Frontend: Sidebar nav with Dashboard/Transactions/Financial Health/AI Co-Pilot/Wealth/Recommendations/Analytics"
+  ],
+  "failed": [
+    {
+      "area": "backend / auth",
+      "issue": "POST /api/auth/register returns 500 Internal Server Error. Backend log: ValueError: [TypeError(\"'ObjectId' object is not iterable\"), TypeError('vars() argument must have __dict__ attribute')]. FastAPI is trying to serialize a Mongo document containing _id (ObjectId) directly. This blocks the entire registration / 3-step KYC onboarding flow on the frontend.",
+      "evidence": "curl POST /api/auth/register with {email,password,full_name,phone} -> {\"detail\":\"Internal server error\"}; supervisor backend.err.log shows ObjectId not iterable traceback in pydantic response serialization.",
+      "priority": "HIGH"
+    }
+  ],
+  "action_items": [
+    "Fix POST /api/auth/register response serialization: ensure the returned user/token payload does not include raw Mongo _id (ObjectId). Either strip _id before returning, project to a Pydantic response_model with id:str (uuid), or jsonable_encoder with custom encoder for ObjectId.",
+    "After fix, re-run the 3-step frontend register flow (details -> OTP -> KYC) to verify auto-login and that ~70-90 seeded transactions land for the new user.",
+    "Note (non-blocker): POST /api/transactions schema uses transaction_type, transaction_date, merchant_name (not type/date). Confirm frontend create-transaction form sends these field names.",
+    "Note (non-blocker): POST /api/ai/chat expects field `question` (not `message`). Confirm frontend payload matches."
+  ],
+  "success_rate": {"backend": "94%", "frontend": "100% (register flow not exercised due to backend 500)"},
+  "retest_needed": true,
+  "full_testing_deferred": true
+}
