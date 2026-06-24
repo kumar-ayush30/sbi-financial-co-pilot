@@ -216,9 +216,11 @@ async def register(body: RegisterReq, request: Request):
     await audit(user_id, "register", request)
     access = create_token(user_id, "access")
     refresh = create_token(user_id, "refresh")
+    user_doc.pop("_id", None)
+    user_doc.pop("password_hash", None)
     return {
         "access_token": access, "refresh_token": refresh, "token_type": "bearer",
-        "user": {k: v for k, v in user_doc.items() if k != "password_hash"},
+        "user": user_doc,
     }
 
 

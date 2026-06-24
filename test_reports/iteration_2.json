@@ -1,0 +1,22 @@
+{
+  "summary": "Retest after register-500 fix. CRITICAL FIX VERIFIED: POST /api/auth/register now returns 200 with access_token, refresh_token, and clean user object (id=uuid, NO _id/ObjectId leak). Frontend 3-step register flow (details -> OTP 123456 -> KYC -> auto-login) lands on /dashboard with success toasts. All previously-untested frontend pages (Recommendations, FinancialHealth, Analytics, AIChat) verified working. Logout clears session and redirects to /login.",
+  "tested_scope": ["frontend", "backend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/register 200 OK with access_token+refresh_token+user{id=uuid,...}, NO ObjectId leak (qa_user1@example.com)",
+    "Frontend Register 3-step flow: details -> reg-send-otp -> reg-otp-input(123456) -> reg-verify-otp -> reg-finish -> /dashboard (auto-login, 'Account created!' + 'Phone verified' toasts)",
+    "Frontend /recommendations renders all sections: Monthly Leaks banner (You could save ₹X), Overspending categories cards (EMI/Investment/Groceries), Subscriptions cards (Apollo, Myntra, etc.), Savings Opportunities (3 cards), SBI Products section",
+    "Frontend /health renders radial gauge (10 SVGs) + all 5 breakdown bars (savings_rate, expense_stability, emergency_fund, investment_activity, debt_ratio)",
+    "Frontend /analytics renders 5 recharts surfaces (monthly bars + category pie + savings trend line)",
+    "Frontend /ai-chat send 'How can I save money?' via chat-input + chat-send-button -> Gemini response appears (msgs 1->12)",
+    "Logout button clears session and redirects to /login",
+    "Login flow with priya.sharma@example.com / Test@1234 -> /dashboard"
+  ],
+  "failed": [],
+  "action_items": [
+    "Note (minor): Chat route is /ai-chat (not /chat) - sidebar uses 'AI Co-Pilot' label; matches App.js routing. Not a bug.",
+    "Note (minor): Recommendations page shows loading text 'AI agents are analyzing your data…' for 5-10s while fetching /api/recommendations - consider adding a skeleton with section placeholders for better UX (non-blocker)."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
