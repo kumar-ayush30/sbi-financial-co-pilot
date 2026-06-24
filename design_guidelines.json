@@ -1,0 +1,97 @@
+{
+  "theme": "LIGHT with Dark Navy Structural Elements (Hybrid Dashboard)",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) + E1 Corporate Banking Twist",
+  "domain": "Finance, Banking, Fintech",
+  "colors": {
+    "primary": {
+      "DEFAULT": "#1C3F8E",
+      "hover": "#15306B",
+      "foreground": "#FFFFFF"
+    },
+    "secondary": {
+      "DEFAULT": "#7A2C8E",
+      "hover": "#602270",
+      "foreground": "#FFFFFF"
+    },
+    "background": "#F4F6F9",
+    "surface": {
+      "DEFAULT": "#FFFFFF",
+      "hover": "#F8FAFC",
+      "border": "#E2E8F0"
+    },
+    "text": {
+      "primary": "#0A1128",
+      "secondary": "#475569",
+      "muted": "#94A3B8"
+    },
+    "status": {
+      "success": "#10B981",
+      "danger": "#EF4444",
+      "warning": "#F59E0B"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "headings": "'Outfit', sans-serif",
+      "body": "'IBM Plex Sans', sans-serif",
+      "mono": "'IBM Plex Mono', monospace"
+    },
+    "rules": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight text-[#0A1128]",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-[#0A1128]",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed text-[#475569]",
+      "numbers": "font-mono font-medium tracking-tight text-[#0A1128]",
+      "labels": "text-xs font-semibold uppercase tracking-[0.2em] text-[#94A3B8]"
+    }
+  },
+  "spacing_and_layout": {
+    "strategy": "The Control Room Grid (Dashboard Mode B)",
+    "grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "containers": "p-6 md:p-8",
+    "surface_strategy": "Clay & Crisp Neumorphism - Flat background, 1px border (#E2E8F0), soft shadow (shadow-sm). No heavy gradients."
+  },
+  "components": {
+    "cards": "Use pure white backgrounds with 1px border-slate-200. Hover states should slightly lift (-translate-y-1) with shadow-md.",
+    "buttons": "Shadcn UI Buttons. Primary: bg-[#1C3F8E] text-white. Secondary: outline with border-[#1C3F8E] text-[#1C3F8E]. Accent: bg-[#7A2C8E] text-white.",
+    "inputs": "Shadcn inputs. Focus state must ring with #1C3F8E (focus:ring-[#1C3F8E]/30 focus:border-[#1C3F8E]).",
+    "charts": "Recharts. Tooltips must use 'Crystal Glass' styling (backdrop-blur-md bg-white/90 border-white/20). Chart colors: #1C3F8E (balance/investments), #10B981 (income), #EF4444 (expense), #7A2C8E (savings trend).",
+    "sidebar_nav": "Dark mode sidebar for authority: bg-[#0A1128] text-white/80. Active link: text-white bg-[#1C3F8E]/50 border-l-4 border-[#7A2C8E].",
+    "data_display": "All currency values MUST use the Mono font. Always include ₹ symbol. Never center-align tabular financial data; left-align labels, right-align amounts."
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "page_load": "staggered fade-in-up for dashboard widgets (e.g., using framer-motion or simple CSS keyframes)"
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5. Clean, unopinionated to match IBM Plex Sans."
+  },
+  "image_urls": [
+    {
+      "category": "auth_hero_background",
+      "url": "https://images.unsplash.com/photo-1565373679107-344d38dbf734?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBiYW5raW5nJTIwcHJvZmVzc2lvbmFsJTIwaW5kaWFufGVufDB8fHx8MTc4MjI1OTI1Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Round gold-colored rupee coins and banknotes. Use with a heavy solid overlay (e.g., bg-white/90 or bg-[#0A1128]/90) for the Auth/Login screen so text remains strictly readable."
+    },
+    {
+      "category": "wealth_simulator_illustration",
+      "url": "https://images.unsplash.com/photo-1565371768838-2479eb537a78?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBiYW5raW5nJTIwcHJvZmVzc2lvbmFsJTIwaW5kaWFufGVufDB8fHx8MTc4MjI1OTI1Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Stack of Indian bank notes. Can be used in the KYC or Wealth Simulator sections as an aesthetic accent to reinforce financial growth."
+    }
+  ],
+  "data_testid_rules": {
+    "interactive_elements": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., 'login-submit-button', 'upload-csv-button').",
+    "data_elements": "Key metrics must have data-testid (e.g., 'total-balance-value', 'health-score-value')."
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: The codebase uses .js and .jsx extensions, NOT .tsx. Generate standard React JS files, removing any TypeScript typings.",
+    "Initialize CRA with Tailwind CSS. Install lucide-react, recharts, framer-motion, @fontsource/outfit, @fontsource/ibm-plex-sans, @fontsource/ibm-plex-mono.",
+    "Implement Shadcn UI components natively in /app/frontend/src/components/ui using .js files.",
+    "Ensure all currency is formatted with ₹ (INR) and uses IBM Plex Mono font via the 'font-mono' utility mapped in tailwind config.",
+    "Strictly adhere to the color palette: #1C3F8E (SBI Navy) and #7A2C8E (SBI Magenta).",
+    "Create a Hybrid Dashboard layout: Dark Navy Sidebar (#0A1128) + Light Gray Content Area (#F4F6F9) + Crisp White Cards (#FFFFFF).",
+    "Financial Health Score should use a visual indicator (like a Recharts RadialBarChart or customized progress ring) with dynamic colors (Red < 50, Yellow 50-70, Green > 70).",
+    "Wealth Simulator must use a Recharts AreaChart with a gradient fill (#1C3F8E to transparent) simulating compound interest over time.",
+    "Transaction Upload should handle CSV/PDF mock interfaces clearly, leveraging shadcn forms and cards."
+  ]
+}
