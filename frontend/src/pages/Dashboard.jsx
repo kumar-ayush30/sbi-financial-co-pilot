@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { api, formatINR } from "@/lib/api";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, RadialBarChart, RadialBar } from "recharts";
-import { Wallet, TrendingUp, TrendingDown, Sparkles, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Wallet, Sparkles, ArrowUpRight, ArrowDownRight, Database, ShieldCheck, AlertCircle, Upload } from "lucide-react";
 
 const COLORS = ["#1C3F8E", "#7A2C8E", "#10B981", "#F59E0B", "#EF4444", "#06B6D4", "#8B5CF6"];
 
@@ -29,9 +31,13 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState([]);
   const [cats, setCats] = useState([]);
+  const [status, setStatus] = useState(null);
 
   useEffect(() => {
     (async () => {
+      const meRes = await api.get("/auth/me");
+      setStatus(meRes.data.data_status);
+      if (!meRes.data.data_status?.has_data) { setSummary({ empty: true }); return; }
       const [s, t, c] = await Promise.all([
         api.get("/dashboard/summary"),
         api.get("/analytics/savings-trend"),
@@ -45,10 +51,47 @@ export default function Dashboard() {
 
   if (!summary) return <div className="text-slate-500 p-8">Loading dashboard…</div>;
 
+  if (summary.empty) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7A2C8E]">Welcome</div>
+          <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[#0A1128] mt-2">No financial data connected</h1>
+          <p className="text-slate-500 mt-1">To see insights, please load a dataset or upload your statement.</p>
+        </div>
+        <Card className="border-slate-200">
+          <CardContent className="p-10 text-center">
+            <Database size={48} className="text-slate-300 mx-auto mb-4"/>
+            <div className="font-heading text-xl font-semibold text-[#0A1128]">No data available</div>
+            <p className="text-slate-500 mt-2">Choose a data source to get personalized AI insights.</p>
+            <div className="mt-6">
+              <Link to="/onboarding"><Button data-testid="empty-state-cta" className="bg-[#1C3F8E] hover:bg-[#15306B] h-11 px-6"><Upload size={16}/> Connect data</Button></Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const scoreColor = summary.health_score >= 70 ? "#10B981" : summary.health_score >= 50 ? "#F59E0B" : "#EF4444";
 
   return (
     <div className="space-y-6">
+      {/* Status Banner */}
+      {status && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-lg px-5 py-3" data-testid="status-banner">
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex items-center gap-2"><Database size={14} className="text-[#1C3F8E]"/><span className="text-xs uppercase tracking-wider text-slate-500">Source:</span><span className="text-sm font-semibold text-[#1C3F8E] uppercase">{status.data_source}</span></div>
+            <div className="flex items-center gap-2"><ShieldCheck size={14} className={status.kyc_status === "verified" ? "text-emerald-600" : "text-amber-600"}/><span className="text-xs uppercase tracking-wider text-slate-500">KYC:</span><span className={`text-sm font-semibold uppercase ${status.kyc_status === "verified" ? "text-emerald-600" : "text-amber-600"}`}>{status.kyc_status}</span></div>
+            <div className="flex items-center gap-2"><Sparkles size={14} className="text-[#7A2C8E]"/><span className="text-xs uppercase tracking-wider text-slate-500">AI:</span><span className="text-sm font-semibold text-emerald-600 uppercase">Operational</span></div>
+            <div className="text-xs text-slate-400">{status.transaction_count} txns</div>
+          </div>
+          {status.data_source === "demo" && (
+            <Link to="/onboarding"><Button variant="outline" size="sm" data-testid="switch-to-personal">Switch to personal data</Button></Link>
+          )}
+        </div>
+      )}
+
       <div>
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7A2C8E]">Overview</div>
         <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[#0A1128] mt-2">Dashboard</h1>

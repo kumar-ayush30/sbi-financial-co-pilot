@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Receipt, HeartPulse, Sparkles, TrendingUp, BadgePercent, BarChart3, LogOut, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Receipt, HeartPulse, Sparkles, TrendingUp, BadgePercent, BarChart3, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { clearSession, getStoredUser } from "@/lib/api";
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { to: "/wealth", label: "Wealth Simulator", icon: TrendingUp, id: "nav-wealth" },
   { to: "/recommendations", label: "Recommendations", icon: BadgePercent, id: "nav-recos" },
   { to: "/analytics", label: "Analytics", icon: BarChart3, id: "nav-analytics" },
+  { to: "/settings", label: "Settings", icon: SettingsIcon, id: "nav-settings" },
 ];
 
 export default function AppLayout() {

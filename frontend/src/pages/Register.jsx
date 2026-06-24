@@ -54,8 +54,8 @@ export default function Register() {
     try {
       const { data } = await api.post("/auth/register", form);
       setSession(data);
-      toast.success("Account created! Loading your dashboard…");
-      nav("/dashboard");
+      toast.success("Account created! Let's verify your KYC…");
+      nav("/onboarding");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Registration failed");
     }

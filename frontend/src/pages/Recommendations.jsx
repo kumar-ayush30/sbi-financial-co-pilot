@@ -11,13 +11,40 @@ export default function Recommendations() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const { data } = await api.get("/recommendations"); setData(data); }
+    try {
+      const me = await api.get("/auth/me");
+      if (!me.data.data_status?.has_data) {
+        setData({ empty: true });
+        return;
+      }
+      const { data } = await api.get("/recommendations"); setData(data);
+    } catch (e) {
+      console.error(e);
+      setData({ empty: true });
+    }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   if (loading || !data) return <div className="text-slate-500 p-8 flex items-center gap-2"><Sparkles className="animate-pulse"/> AI agents are analyzing your data…</div>;
+
+  if (data.empty) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7A2C8E]">AI Insights</div>
+          <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[#0A1128] mt-2">Recommendations</h1>
+        </div>
+        <Card className="border-slate-200"><CardContent className="p-10 text-center">
+          <Sparkles size={40} className="text-slate-300 mx-auto mb-3"/>
+          <div className="font-heading text-xl font-semibold text-[#0A1128]">No data to analyze</div>
+          <p className="text-slate-500 mt-2">Load demo data or upload a statement to see AI recommendations.</p>
+          <a href="/onboarding"><Button className="mt-6 bg-[#1C3F8E] hover:bg-[#15306B]">Connect data</Button></a>
+        </CardContent></Card>
+      </div>
+    );
+  }
 
   const insights = data.expense_insights || {};
 

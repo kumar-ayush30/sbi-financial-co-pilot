@@ -21,6 +21,14 @@ export default function Login() {
       const { data } = await api.post("/auth/login", { email, password });
       setSession(data);
       toast.success("Welcome back!");
+      // Check if user needs onboarding
+      try {
+        const me = await api.get("/auth/me");
+        if (me.data.data_status?.kyc_status !== "verified" || !me.data.data_status?.has_data) {
+          nav("/onboarding");
+          return;
+        }
+      } catch (e) { console.error(e); }
       nav("/dashboard");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Login failed");

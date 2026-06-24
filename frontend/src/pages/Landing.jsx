@@ -20,6 +20,7 @@ export default function Landing() {
             <div className="font-heading font-bold text-[#0A1128] tracking-tight">SBI Financial Co-Pilot</div>
           </div>
           <div className="flex items-center gap-3">
+            <Link to="/about" data-testid="header-about-link"><Button variant="ghost">About</Button></Link>
             <Link to="/login"><Button variant="ghost" data-testid="header-login-button">Login</Button></Link>
             <Link to="/register"><Button className="bg-[#1C3F8E] hover:bg-[#15306B]" data-testid="header-register-button">Get Started</Button></Link>
           </div>

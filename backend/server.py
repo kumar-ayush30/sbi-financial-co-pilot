@@ -185,6 +185,8 @@ async def register(body: RegisterReq, request: Request):
         "phone": body.phone,
         "password_hash": hash_password(body.password),
         "is_verified": False,
+        "kyc_status": "pending",
+        "data_source": "none",  # none | demo | personal
         "pan": body.pan,
         "aadhaar_last4": body.aadhaar_last4,
         "sbi_account_last4": body.sbi_account_last4,
@@ -205,13 +207,7 @@ async def register(body: RegisterReq, request: Request):
     }
     await db.financial_profiles.insert_one(profile_doc)
 
-    # Seed sample transactions so new users see meaningful data instantly
-    sample_txns = generate_sample_transactions(user_id, body.monthly_income or 65000, months_back=3)
-    for t in sample_txns:
-        t["id"] = str(uuid.uuid4())
-        t["created_at"] = now
-    if sample_txns:
-        await db.transactions.insert_many(sample_txns)
+    # NOTE: We do NOT auto-seed transactions anymore. User chooses demo or personal in onboarding.
 
     await audit(user_id, "register", request)
     access = create_token(user_id, "access")
@@ -288,7 +284,96 @@ async def verify_otp(body: OTPVerifyReq, request: Request):
 async def me(user_id: str = Depends(get_current_user_id)):
     user = await get_user(user_id)
     profile = await get_profile(user_id)
-    return {"user": user, "profile": profile}
+    txn_count = await db.transactions.count_documents({"user_id": user_id})
+    return {
+        "user": user,
+        "profile": profile,
+        "data_status": {
+            "data_source": user.get("data_source", "none"),
+            "kyc_status": user.get("kyc_status", "pending"),
+            "transaction_count": txn_count,
+            "has_data": txn_count > 0,
+        },
+    }
+
+
+# ============================================================
+# ONBOARDING / DATA MANAGEMENT
+# ============================================================
+class KYCBody(BaseModel):
+    pan: Optional[str] = None
+    aadhaar_last4: Optional[str] = None
+    sbi_account_last4: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    address: Optional[str] = None
+
+
+@api.post("/onboarding/complete-kyc")
+async def complete_kyc(body: KYCBody, request: Request, user_id: str = Depends(get_current_user_id)):
+    updates = {k: v for k, v in body.model_dump().items() if v}
+    updates["kyc_status"] = "verified"
+    updates["kyc_verified_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": updates})
+    await audit(user_id, "kyc_verified", request)
+    return {"kyc_status": "verified"}
+
+
+@api.post("/onboarding/load-demo")
+async def load_demo(request: Request, user_id: str = Depends(get_current_user_id)):
+    # Clear any existing financial data first
+    await db.transactions.delete_many({"user_id": user_id})
+    profile = await get_profile(user_id)
+    income = float(profile.get("monthly_income", 65000) or 65000)
+    sample = generate_sample_transactions(user_id, income, months_back=3)
+    now = datetime.now(timezone.utc).isoformat()
+    for t in sample:
+        t["id"] = str(uuid.uuid4())
+        t["created_at"] = now
+    if sample:
+        await db.transactions.insert_many(sample)
+    await db.users.update_one({"id": user_id}, {"$set": {"data_source": "demo"}})
+    await audit(user_id, "load_demo", request, f"{len(sample)} txns")
+    return {"loaded": len(sample), "data_source": "demo"}
+
+
+@api.post("/user/reset-data")
+async def reset_data(request: Request, user_id: str = Depends(get_current_user_id)):
+    """Delete all financial data, keep account + profile + credentials."""
+    collections = [
+        "transactions", "subscriptions", "financial_health_scores",
+        "recommendations", "wealth_projections", "sbi_product_recommendations",
+        "ai_insights", "uploaded_statements", "spending_patterns", "savings_opportunities",
+    ]
+    deleted = {}
+    for c in collections:
+        res = await db[c].delete_many({"user_id": user_id})
+        deleted[c] = res.deleted_count
+    await db.users.update_one({"id": user_id}, {"$set": {"data_source": "none"}})
+    await audit(user_id, "data_reset", request, str(deleted))
+    return {"reset": True, "deleted": deleted}
+
+
+@api.delete("/user/account")
+async def delete_account(request: Request, user_id: str = Depends(get_current_user_id)):
+    collections = [
+        "transactions", "subscriptions", "financial_health_scores", "recommendations",
+        "wealth_projections", "sbi_product_recommendations", "ai_insights",
+        "uploaded_statements", "financial_profiles", "spending_patterns", "savings_opportunities",
+    ]
+    for c in collections:
+        await db[c].delete_many({"user_id": user_id})
+    await db.users.delete_one({"id": user_id})
+    await audit(user_id, "account_deleted", request)
+    return {"deleted": True}
+
+
+@api.get("/user/export-data")
+async def export_data(user_id: str = Depends(get_current_user_id)):
+    user = await get_user(user_id)
+    profile = await get_profile(user_id)
+    txns = await db.transactions.find({"user_id": user_id}, {"_id": 0}).to_list(5000)
+    return {"user": user, "profile": profile, "transactions": txns,
+            "exported_at": datetime.now(timezone.utc).isoformat()}
 
 
 @api.put("/auth/profile")
@@ -361,6 +446,7 @@ async def upload_csv(file: UploadFile = File(...), user_id: str = Depends(get_cu
         })
     if rows:
         await db.transactions.insert_many(rows)
+        await db.users.update_one({"id": user_id}, {"$set": {"data_source": "personal"}})
     return {"imported": len(rows)}
 
 

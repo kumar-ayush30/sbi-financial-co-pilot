@@ -1,0 +1,25 @@
+{
+  "summary": "Tested SBI Co-Pilot onboarding/KYC/data-management feature set. Backend: registered new user → no auto-seed (transaction_count=0, data_source=none, kyc_status=pending), /auth/me returns data_status, /onboarding/complete-kyc sets kyc=verified, /onboarding/load-demo loaded 73 demo txns + data_source=demo, /user/export-data returns full JSON, /user/reset-data deletes all financial data. Frontend: Login of KYC-pending user correctly redirected to /onboarding; KYC form submitted with data-testids; data-source step rendered; clicking onb-use-demo loaded 81 demo txns and redirected to /dashboard; status-banner shows Source: DEMO, KYC: VERIFIED, AI: OPERATIONAL; /about renders Mission/Vision/Technology with no financial metrics; /settings shows all sections (Profile, Financial, Data Management, Notifications, Privacy, Danger); reset-data flow with RESET confirm successfully wiped data and redirected to /onboarding.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/register creates user with kyc_status=pending, data_source=none, no auto-seeded transactions",
+    "GET /api/auth/me returns data_status {data_source, kyc_status, transaction_count, has_data}",
+    "POST /api/onboarding/complete-kyc sets kyc_status=verified",
+    "POST /api/onboarding/load-demo loaded 73 demo transactions and set data_source=demo",
+    "GET /api/user/export-data returns JSON with user/profile/transactions/exported_at",
+    "POST /api/user/reset-data deletes financial data, keeps account (data_source=none, kyc preserved)",
+    "Login of KYC-pending user redirects to /onboarding",
+    "Onboarding KYC form (kyc-pan, kyc-aadhaar, kyc-dob, kyc-sbi, kyc-address, kyc-submit) works and transitions to data source step",
+    "onb-use-demo loads demo data and navigates to /dashboard",
+    "Dashboard status-banner contains DEMO, VERIFIED, OPERATIONAL labels",
+    "/about page renders Mission/Vision/Technology with no financial metrics",
+    "/settings renders all 6 sections including Danger Zone",
+    "Reset-data flow: reset-data-button -> reset-confirm-input (RESET) -> reset-confirm-button -> redirected to /onboarding"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Did not test full 3-step UI register flow (basic info -> OTP verify -> profile) because backend already covered registration; logged in via UI with backend-created user instead. DELETE /api/user/account endpoint was NOT executed (would invalidate session); recommend full-testing agent verify it separately. Mocked APIs noted: SMS OTP (demo_otp returned in response, fallback 123456), PDF parsing (ack-only), Bank Connect (Account Aggregator placeholder)."
+}

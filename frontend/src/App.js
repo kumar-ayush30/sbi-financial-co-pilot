@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import Onboarding from "@/pages/Onboarding";
 import AppLayout from "@/components/AppLayout";
 import Dashboard from "@/pages/Dashboard";
 import Transactions from "@/pages/Transactions";
@@ -13,6 +14,8 @@ import AIChat from "@/pages/AIChat";
 import WealthSimulator from "@/pages/WealthSimulator";
 import Recommendations from "@/pages/Recommendations";
 import Analytics from "@/pages/Analytics";
+import Settings from "@/pages/Settings";
+import About from "@/pages/About";
 
 const isAuthed = () => !!localStorage.getItem("sbi_access_token");
 
@@ -31,6 +34,8 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
           <Route element={<Protected><AppLayout /></Protected>}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />
@@ -39,6 +44,7 @@ function App() {
             <Route path="/wealth" element={<WealthSimulator />} />
             <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
