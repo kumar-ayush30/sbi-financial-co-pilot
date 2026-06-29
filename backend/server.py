@@ -4,7 +4,8 @@ Architecture:
 - MongoDB collections: users, financial_profiles, transactions, subscriptions,
   financial_health_scores, recommendations, wealth_projections, ai_insights, otps, audit_logs
 - JWT auth (access + refresh tokens)
-- AI agents powered by Gemini 3 Flash via Emergent Universal LLM key
+- AI agents powered by Gemini 2.5 Flash
+- Fraud detection system
 """
 import os
 import io
@@ -26,6 +27,7 @@ from dotenv import load_dotenv
 from auth_utils import (
     hash_password, verify_password, create_token, decode_token,
     generate_otp, get_current_user_id, validate_password_strength,
+    detect_fraud_score, check_transaction_velocity, get_fraud_alerts
 )
 from ai_agents import (
     expense_detective, cost_cutting_advisor, sbi_product_recommender,
@@ -39,9 +41,15 @@ load_dotenv(ROOT_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("sbi-copilot")
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+db_name = os.environ.get("DB_NAME", "sbi_copilot")
+
+try:
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[db_name]
+except Exception as e:
+    logger.error(f"MongoDB connection failed: {e}")
+    db = None
 
 app = FastAPI(title="SBI Financial Co-Pilot API", version="1.0.0")
 api = APIRouter(prefix="/api")
@@ -129,6 +137,10 @@ class ProfileUpdate(BaseModel):
 # Helpers
 # ============================================================
 async def audit(user_id: Optional[str], action: str, request: Request, details: str = ""):
+    """Log audit trail for actions."""
+    if not db:
+        logger.warning(f"Audit log skipped (no DB): {action}")
+        return
     try:
         await db.audit_logs.insert_one({
             "id": str(uuid.uuid4()),
@@ -150,6 +162,9 @@ def clean(doc: dict) -> dict:
 
 
 async def get_user(user_id: str) -> dict:
+    """Get user by ID, excluding password."""
+    if not db:
+        raise HTTPException(500, "Database unavailable")
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(404, "User not found")
@@ -157,6 +172,9 @@ async def get_user(user_id: str) -> dict:
 
 
 async def get_profile(user_id: str) -> dict:
+    """Get user's financial profile."""
+    if not db:
+        return {}
     p = await db.financial_profiles.find_one({"user_id": user_id}, {"_id": 0})
     return p or {}
 
@@ -166,6 +184,9 @@ async def get_profile(user_id: str) -> dict:
 # ============================================================
 @api.post("/auth/register")
 async def register(body: RegisterReq, request: Request):
+    """Register new user."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     if not rate_limit(f"register:{request.client.host}", 10, 300):
         raise HTTPException(429, "Too many requests")
     err = validate_password_strength(body.password)
@@ -207,8 +228,6 @@ async def register(body: RegisterReq, request: Request):
     }
     await db.financial_profiles.insert_one(profile_doc)
 
-    # NOTE: We do NOT auto-seed transactions anymore. User chooses demo or personal in onboarding.
-
     await audit(user_id, "register", request)
     access = create_token(user_id, "access")
     refresh = create_token(user_id, "refresh")
@@ -222,6 +241,9 @@ async def register(body: RegisterReq, request: Request):
 
 @api.post("/auth/login")
 async def login(body: LoginReq, request: Request):
+    """Login user."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     if not rate_limit(f"login:{request.client.host}:{body.email}", 8, 300):
         raise HTTPException(429, "Too many login attempts. Try again later.")
     user = await db.users.find_one({"email": body.email})
@@ -239,6 +261,7 @@ async def login(body: LoginReq, request: Request):
 
 @api.post("/auth/refresh")
 async def refresh_token(body: RefreshReq):
+    """Refresh access token."""
     payload = decode_token(body.refresh_token)
     if payload.get("type") != "refresh":
         raise HTTPException(401, "Invalid refresh token")
@@ -247,6 +270,9 @@ async def refresh_token(body: RefreshReq):
 
 @api.post("/auth/otp/send")
 async def send_otp(body: OTPReq, request: Request):
+    """Send OTP to phone."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     if not rate_limit(f"otp:{body.phone}", 3, 300):
         raise HTTPException(429, "Too many OTP requests")
     code = generate_otp()
@@ -262,14 +288,22 @@ async def send_otp(body: OTPReq, request: Request):
     )
     await audit(None, "otp_sent", request, body.phone)
     # NOTE: In production this would be sent via SMS (Twilio/MSG91).
-    # For demo we return it in the response. ALWAYS works with 123456 as fallback.
-    return {"sent": True, "demo_otp": code, "message": "OTP sent (demo mode). For testing you may also use 123456."}
+    # For demo we return it in the response. ALWAYS works with 000000 as fallback.
+    return {
+        "sent": True,
+        "demo_otp": code,
+        "message": f"OTP sent (demo mode). Use {code} or 123456 for testing."
+    }
 
 
 @api.post("/auth/otp/verify")
 async def verify_otp(body: OTPVerifyReq, request: Request):
+    """Verify OTP."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     rec = await db.otps.find_one({"phone": body.phone})
-    valid_demo = body.otp == "123456"
+    # Demo codes: 000000 or 123456
+    valid_demo = body.otp in ["000000", "123456"]
     valid_real = rec and rec.get("code") == body.otp and \
         datetime.fromisoformat(rec["expires_at"]) > datetime.now(timezone.utc)
     if not (valid_demo or valid_real):
@@ -282,6 +316,9 @@ async def verify_otp(body: OTPVerifyReq, request: Request):
 
 @api.get("/auth/me")
 async def me(user_id: str = Depends(get_current_user_id)):
+    """Get current user info."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     user = await get_user(user_id)
     profile = await get_profile(user_id)
     txn_count = await db.transactions.count_documents({"user_id": user_id})
@@ -310,6 +347,9 @@ class KYCBody(BaseModel):
 
 @api.post("/onboarding/complete-kyc")
 async def complete_kyc(body: KYCBody, request: Request, user_id: str = Depends(get_current_user_id)):
+    """Complete KYC verification."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     updates = {k: v for k, v in body.model_dump().items() if v}
     updates["kyc_status"] = "verified"
     updates["kyc_verified_at"] = datetime.now(timezone.utc).isoformat()
@@ -320,6 +360,9 @@ async def complete_kyc(body: KYCBody, request: Request, user_id: str = Depends(g
 
 @api.post("/onboarding/load-demo")
 async def load_demo(request: Request, user_id: str = Depends(get_current_user_id)):
+    """Load demo transactions."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     # Clear any existing financial data first
     await db.transactions.delete_many({"user_id": user_id})
     profile = await get_profile(user_id)
@@ -339,10 +382,12 @@ async def load_demo(request: Request, user_id: str = Depends(get_current_user_id
 @api.post("/user/reset-data")
 async def reset_data(request: Request, user_id: str = Depends(get_current_user_id)):
     """Delete all financial data, keep account + profile + credentials."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     collections = [
         "transactions", "subscriptions", "financial_health_scores",
         "recommendations", "wealth_projections", "sbi_product_recommendations",
-        "ai_insights", "uploaded_statements", "spending_patterns", "savings_opportunities",
+        "ai_insights", "uploaded_statements", "spending_patterns", "savings_opportunities", "fraud_alerts",
     ]
     deleted = {}
     for c in collections:
@@ -355,10 +400,13 @@ async def reset_data(request: Request, user_id: str = Depends(get_current_user_i
 
 @api.delete("/user/account")
 async def delete_account(request: Request, user_id: str = Depends(get_current_user_id)):
+    """Delete entire user account."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     collections = [
         "transactions", "subscriptions", "financial_health_scores", "recommendations",
         "wealth_projections", "sbi_product_recommendations", "ai_insights",
-        "uploaded_statements", "financial_profiles", "spending_patterns", "savings_opportunities",
+        "uploaded_statements", "financial_profiles", "spending_patterns", "savings_opportunities", "fraud_alerts",
     ]
     for c in collections:
         await db[c].delete_many({"user_id": user_id})
@@ -369,6 +417,9 @@ async def delete_account(request: Request, user_id: str = Depends(get_current_us
 
 @api.get("/user/export-data")
 async def export_data(user_id: str = Depends(get_current_user_id)):
+    """Export all user data."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     user = await get_user(user_id)
     profile = await get_profile(user_id)
     txns = await db.transactions.find({"user_id": user_id}, {"_id": 0}).to_list(5000)
@@ -378,6 +429,9 @@ async def export_data(user_id: str = Depends(get_current_user_id)):
 
 @api.put("/auth/profile")
 async def update_profile(body: ProfileUpdate, user_id: str = Depends(get_current_user_id)):
+    """Update user profile."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if updates:
         await db.financial_profiles.update_one({"user_id": user_id}, {"$set": updates}, upsert=True)
@@ -389,6 +443,9 @@ async def update_profile(body: ProfileUpdate, user_id: str = Depends(get_current
 # ============================================================
 @api.get("/transactions")
 async def list_transactions(user_id: str = Depends(get_current_user_id), limit: int = 200, category: Optional[str] = None):
+    """List user transactions."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     q = {"user_id": user_id}
     if category:
         q["category"] = category
@@ -398,16 +455,34 @@ async def list_transactions(user_id: str = Depends(get_current_user_id), limit: 
 
 @api.post("/transactions")
 async def create_transaction(body: TransactionIn, user_id: str = Depends(get_current_user_id)):
+    """Create new transaction with fraud detection."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
+    
+    # Run fraud detection
+    history = await db.transactions.find({"user_id": user_id}).to_list(100)
+    profile = await get_profile(user_id)
+    fraud_result = detect_fraud_score({"amount": body.amount, "category": body.category, "merchant_name": body.merchant_name, "transaction_type": body.transaction_type}, profile, history)
+    
+    # Block high-risk transactions
+    if fraud_result["risk_level"] == "HIGH":
+        raise HTTPException(403, f"Transaction blocked: {fraud_result['reason']}")
+    
     doc = body.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user_id
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["fraud_score"] = fraud_result["fraud_score"]
+    doc["fraud_risk"] = fraud_result["risk_level"]
     await db.transactions.insert_one(doc)
     return clean(doc)
 
 
 @api.delete("/transactions/{txn_id}")
 async def delete_transaction(txn_id: str, user_id: str = Depends(get_current_user_id)):
+    """Delete transaction."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     res = await db.transactions.delete_one({"id": txn_id, "user_id": user_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Transaction not found")
@@ -416,6 +491,9 @@ async def delete_transaction(txn_id: str, user_id: str = Depends(get_current_use
 
 @api.post("/transactions/upload-csv")
 async def upload_csv(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
+    """Upload CSV transactions."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(400, "Only CSV files allowed")
     content = (await file.read()).decode("utf-8", errors="ignore")
@@ -443,6 +521,8 @@ async def upload_csv(file: UploadFile = File(...), user_id: str = Depends(get_cu
             "description": rl.get("description") or "",
             "payment_method": rl.get("payment_method") or "UPI",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "fraud_score": 0,
+            "fraud_risk": "LOW",
         })
     if rows:
         await db.transactions.insert_many(rows)
@@ -452,12 +532,14 @@ async def upload_csv(file: UploadFile = File(...), user_id: str = Depends(get_cu
 
 @api.post("/transactions/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
-    # PDF parsing requires extra libs; we accept and acknowledge for demo
+    """Upload PDF statement."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files allowed")
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 10MB)")
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     await db.uploaded_statements.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -471,9 +553,47 @@ async def upload_pdf(file: UploadFile = File(...), user_id: str = Depends(get_cu
 
 
 # ============================================================
+# FRAUD DETECTION ENDPOINTS
+# ============================================================
+@api.get("/fraud/alerts")
+async def get_fraud_alerts_endpoint(user_id: str = Depends(get_current_user_id)):
+    """Get fraud alerts for user."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
+    history = await db.transactions.find({"user_id": user_id}).to_list(100)
+    profile = await get_profile(user_id)
+    alerts = get_fraud_alerts(history, profile)
+    return {"alerts": alerts, "alert_count": len(alerts)}
+
+
+@api.post("/fraud/check-transaction")
+async def check_transaction_fraud(body: TransactionIn, user_id: str = Depends(get_current_user_id)):
+    """Check fraud score for transaction before creation."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
+    history = await db.transactions.find({"user_id": user_id}).to_list(100)
+    profile = await get_profile(user_id)
+    fraud_result = detect_fraud_score(body.model_dump(), profile, history)
+    return fraud_result
+
+
+@api.get("/fraud/velocity")
+async def check_velocity(user_id: str = Depends(get_current_user_id)):
+    """Check transaction velocity."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
+    history = await db.transactions.find({"user_id": user_id}).to_list(100)
+    velocity = check_transaction_velocity(user_id, history, max_txns_per_hour=5)
+    return velocity
+
+
+# ============================================================
 # DASHBOARD
 # ============================================================
-async def _compute_monthly(user_id: str) -> Dict[str, float]:
+async def _compute_monthly(user_id: str) -> Dict[str, Any]:
+    """Compute monthly stats."""
+    if not db:
+        return {"monthly_income": 0, "monthly_expenses": 0, "txns": []}
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
     txns = await db.transactions.find(
         {"user_id": user_id, "transaction_date": {"$gte": cutoff}}, {"_id": 0}
@@ -485,6 +605,7 @@ async def _compute_monthly(user_id: str) -> Dict[str, float]:
 
 @api.get("/dashboard/summary")
 async def dashboard_summary(user_id: str = Depends(get_current_user_id)):
+    """Get dashboard summary."""
     data = await _compute_monthly(user_id)
     profile = await get_profile(user_id)
     monthly_income = data["monthly_income"] or float(profile.get("monthly_income", 0) or 0)
@@ -507,6 +628,9 @@ async def dashboard_summary(user_id: str = Depends(get_current_user_id)):
 # ============================================================
 @api.get("/financial-health")
 async def get_financial_health(user_id: str = Depends(get_current_user_id)):
+    """Get financial health score."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     data = await _compute_monthly(user_id)
     profile = await get_profile(user_id)
     income = data["monthly_income"] or float(profile.get("monthly_income", 0) or 0)
@@ -527,6 +651,7 @@ async def get_financial_health(user_id: str = Depends(get_current_user_id)):
 # ============================================================
 @api.post("/ai/chat")
 async def ai_chat_endpoint(body: ChatReq, user_id: str = Depends(get_current_user_id)):
+    """Chat with AI."""
     data = await _compute_monthly(user_id)
     profile = await get_profile(user_id)
     by_cat: Dict[str, float] = {}
@@ -543,6 +668,8 @@ async def ai_chat_endpoint(body: ChatReq, user_id: str = Depends(get_current_use
         "health_score": financial_health_score(data["txns"], data["monthly_income"], 50000)["score"],
     }
     answer = await ai_chat(body.question, context, user_id)
+    if not db:
+        return {"answer": answer}
     await db.ai_insights.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -555,6 +682,9 @@ async def ai_chat_endpoint(body: ChatReq, user_id: str = Depends(get_current_use
 
 @api.get("/ai/chat-history")
 async def chat_history(user_id: str = Depends(get_current_user_id), limit: int = 20):
+    """Get chat history."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     items = await db.ai_insights.find({"user_id": user_id}, {"_id": 0}).sort("generated_at", -1).limit(limit).to_list(limit)
     return items
 
@@ -564,6 +694,9 @@ async def chat_history(user_id: str = Depends(get_current_user_id), limit: int =
 # ============================================================
 @api.get("/recommendations")
 async def get_recommendations(user_id: str = Depends(get_current_user_id)):
+    """Get recommendations."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     data = await _compute_monthly(user_id)
     profile = await get_profile(user_id)
     income = data["monthly_income"] or float(profile.get("monthly_income", 0) or 0)
@@ -604,6 +737,9 @@ async def get_recommendations(user_id: str = Depends(get_current_user_id)):
 # ============================================================
 @api.post("/wealth-simulator")
 async def wealth_simulator(body: WealthSimReq, user_id: str = Depends(get_current_user_id)):
+    """Simulate wealth projection."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     result = wealth_projection(body.monthly_investment, body.years, body.expected_return)
     await db.wealth_projections.insert_one({
         "id": str(uuid.uuid4()),
@@ -622,6 +758,9 @@ async def wealth_simulator(body: WealthSimReq, user_id: str = Depends(get_curren
 # ============================================================
 @api.get("/analytics/monthly-spending")
 async def monthly_spending(user_id: str = Depends(get_current_user_id)):
+    """Get monthly spending trends."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     txns = await db.transactions.find({"user_id": user_id}, {"_id": 0}).to_list(2000)
     buckets: Dict[str, Dict[str, float]] = {}
     for t in txns:
@@ -636,6 +775,9 @@ async def monthly_spending(user_id: str = Depends(get_current_user_id)):
 
 @api.get("/analytics/category-breakdown")
 async def category_breakdown(user_id: str = Depends(get_current_user_id)):
+    """Get category spending breakdown."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
     txns = await db.transactions.find(
         {"user_id": user_id, "transaction_date": {"$gte": cutoff}, "transaction_type": "debit"},
@@ -649,6 +791,9 @@ async def category_breakdown(user_id: str = Depends(get_current_user_id)):
 
 @api.get("/analytics/savings-trend")
 async def savings_trend(user_id: str = Depends(get_current_user_id)):
+    """Get savings trend."""
+    if not db:
+        raise HTTPException(503, "Database unavailable")
     txns = await db.transactions.find({"user_id": user_id}, {"_id": 0}).to_list(2000)
     buckets: Dict[str, Dict[str, float]] = {}
     for t in txns:
@@ -693,4 +838,5 @@ async def unhandled(request: Request, exc: Exception):
 
 @app.on_event("shutdown")
 async def shutdown_db():
-    client.close()
+    if client:
+        client.close()

@@ -1,10 +1,16 @@
-"""AI Agents for SBI Financial Co-Pilot powered by Gemini 3 Flash."""
+"""AI Agents for SBI Financial Co-Pilot powered by Gemini 2.5 Flash."""
 import os
 import json
 import re
 import logging
 from typing import List, Dict, Any
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    HAS_EMERGENT = True
+except ImportError:
+    HAS_EMERGENT = False
+    logging.warning("emergentintegrations not available - using fallback responses")
 
 logger = logging.getLogger(__name__)
 MODEL_PROVIDER = "gemini"
@@ -33,13 +39,26 @@ def _extract_json(text: str) -> Any:
 
 
 async def _call_agent(session_id: str, system_msg: str, user_msg: str) -> str:
-    chat = LlmChat(
-        api_key=_get_key(),
-        session_id=session_id,
-        system_message=system_msg,
-    ).with_model(MODEL_PROVIDER, MODEL_NAME)
-    reply = await chat.send_message(UserMessage(text=user_msg))
-    return reply if isinstance(reply, str) else str(reply)
+    """Call LLM agent with fallback if not available."""
+    if not HAS_EMERGENT:
+        # Return fallback response
+        logger.warning(f"Using fallback response for session {session_id}")
+        return json.dumps({
+            "message": "Fallback mode: Full AI features require emergentintegrations library",
+            "status": "fallback"
+        })
+    
+    try:
+        chat = LlmChat(
+            api_key=_get_key(),
+            session_id=session_id,
+            system_message=system_msg,
+        ).with_model(MODEL_PROVIDER, MODEL_NAME)
+        reply = await chat.send_message(UserMessage(text=user_msg))
+        return reply if isinstance(reply, str) else str(reply)
+    except Exception as e:
+        logger.error(f"Agent call error: {e}")
+        raise
 
 
 # =====================================================================
@@ -78,17 +97,20 @@ async def expense_detective(transactions: List[Dict[str, Any]], user_id: str) ->
         "currency": "INR",
     }
     try:
-        out = await _call_agent(f"expense-{user_id}", system, json.dumps(user_payload))
-        parsed = _extract_json(out)
-        if parsed:
-            return parsed
+        if HAS_EMERGENT:
+            out = await _call_agent(f"expense-{user_id}", system, json.dumps(user_payload))
+            parsed = _extract_json(out)
+            if parsed:
+                return parsed
     except Exception as e:
         logger.error(f"expense_detective error: {e}")
 
     # Fallback heuristic
     top = sorted(by_cat.items(), key=lambda x: -x[1])[:3]
-    subs = [{"service": m.title(), "monthly_cost": round(merchant_amounts[m] / max(merchant_counts[m], 1), 2)}
-            for m in merchant_counts if merchant_counts[m] >= 2][:5]
+    subs = [{
+        "service": m.title(),
+        "monthly_cost": round(merchant_amounts[m] / max(merchant_counts[m], 1), 2)
+    } for m in merchant_counts if merchant_counts[m] >= 2][:5]
     return {
         "overspending_categories": [{"category": c, "monthly_amount": a, "reason": "High spend"} for c, a in top],
         "subscriptions": subs,
@@ -113,10 +135,11 @@ async def cost_cutting_advisor(transactions: List[Dict[str, Any]], monthly_incom
     )
     payload = {"monthly_income": monthly_income, "category_spend": by_cat}
     try:
-        out = await _call_agent(f"costcut-{user_id}", system, json.dumps(payload))
-        parsed = _extract_json(out)
-        if isinstance(parsed, list) and parsed:
-            return parsed[:6]
+        if HAS_EMERGENT:
+            out = await _call_agent(f"costcut-{user_id}", system, json.dumps(payload))
+            parsed = _extract_json(out)
+            if isinstance(parsed, list) and parsed:
+                return parsed[:6]
     except Exception as e:
         logger.error(f"cost_cutting error: {e}")
 
@@ -140,10 +163,11 @@ async def sbi_product_recommender(profile: Dict[str, Any], user_id: str) -> List
         'Return STRICT JSON array: [{"product_name":"","product_type":"FD|RD|MF|Insurance|PPF|ELSS","reason":"","expected_return":"","risk_level":"Low|Medium|High"}]'
     )
     try:
-        out = await _call_agent(f"sbi-{user_id}", system, json.dumps(profile))
-        parsed = _extract_json(out)
-        if isinstance(parsed, list) and parsed:
-            return parsed[:5]
+        if HAS_EMERGENT:
+            out = await _call_agent(f"sbi-{user_id}", system, json.dumps(profile))
+            parsed = _extract_json(out)
+            if isinstance(parsed, list) and parsed:
+                return parsed[:5]
     except Exception as e:
         logger.error(f"sbi_recommender error: {e}")
 
@@ -154,7 +178,13 @@ async def sbi_product_recommender(profile: Dict[str, Any], user_id: str) -> List
         {"product_name": "SBI Recurring Deposit", "product_type": "RD", "reason": "Build saving habit", "expected_return": "6.5% p.a.", "risk_level": "Low"},
     ]
     if risk in ("medium", "high") and age < 50:
-        fallback.append({"product_name": "SBI Equity Hybrid Fund", "product_type": "MF", "reason": "Growth potential with balanced risk", "expected_return": "10-12% p.a.", "risk_level": "Medium"})
+        fallback.append({
+            "product_name": "SBI Equity Hybrid Fund",
+            "product_type": "MF",
+            "reason": "Growth potential with balanced risk",
+            "expected_return": "10-12% p.a.",
+            "risk_level": "Medium"
+        })
     return fallback
 
 
@@ -263,6 +293,7 @@ def wealth_projection(monthly_investment: float, years: int, expected_return: fl
 # AI CHAT
 # =====================================================================
 async def ai_chat(question: str, user_context: Dict[str, Any], user_id: str) -> str:
+    """Chat with AI about finances."""
     system = (
         "You are SBI Co-Pilot, a friendly Indian banking AI assistant. Answer questions about the user's "
         "finances using their transaction context. Be concise (under 150 words), use ₹ INR, give actionable advice. "
@@ -277,7 +308,10 @@ async def ai_chat(question: str, user_context: Dict[str, Any], user_id: str) -> 
         f"User question: {question}"
     )
     try:
-        return await _call_agent(f"chat-{user_id}", system, context_str)
+        if HAS_EMERGENT:
+            return await _call_agent(f"chat-{user_id}", system, context_str)
+        else:
+            return "I'm in fallback mode. Full AI features require emergentintegrations setup. Your question: " + question[:100]
     except Exception as e:
         logger.error(f"ai_chat error: {e}")
         return "I'm having trouble connecting right now. Please try again in a moment."
